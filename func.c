@@ -26,16 +26,9 @@ typedef struct {
 } SegregatedFreeLists;
 
 typedef struct {
-    size_t address;
-    unsigned int data_size;
-	void* data;
-	struct weirdnode* next;
-    struct weirdnode* prev;
-} weirdnode;
-
-typedef struct {
-    unsigned int size;
-    weirdnode* head;
+    int nlists;
+    int nbytes; // pe lista
+    doubly_linked_list_t **list;
 } OccupiedMemory;
 
 doubly_linked_list_t* dll_create(unsigned int data_size)
