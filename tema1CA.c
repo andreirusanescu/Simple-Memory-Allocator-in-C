@@ -25,7 +25,7 @@ void printaddress(SegregatedFreeLists *v)
 }
 
 // merge bine functia asta
-void initheap(SegregatedFreeLists **v, size_t heapbase, int nlists, int bytes, int type_rec)
+void initheap(SegregatedFreeLists **v, OccupiedMemory **w,size_t heapbase, int nlists, int bytes, int type_rec)
 {
     *v = (SegregatedFreeLists*)malloc(sizeof(SegregatedFreeLists));
     if (!*v) {
@@ -38,11 +38,29 @@ void initheap(SegregatedFreeLists **v, size_t heapbase, int nlists, int bytes, i
         free(*v);
         return;
     }
+
+    *w = (OccupiedMemory*)malloc(sizeof(OccupiedMemory));
+    if (!*w) {
+        fprintf(stderr, "malloc() failed\n");
+        free((*v)->list);
+        free(*v);
+        return;
+    }
+    (*w)->list = (doubly_linked_list_t**)malloc(nlists * sizeof(doubly_linked_list_t*));
+    if (!(*w)->list) {
+        fprintf(stderr, "malloc() failed\n");
+        free((*v)->list);
+        free(*v);
+        free(*w);
+        return;
+    }
     size_t address = heapbase;
     for (int i = 0; i < nlists; ++i) {
         address = address + i * bytes;
-        (*v)->list[i] = dll_create(1 << (i + 3)); // tre sa fac altfel heapbaseul asta;
+        (*v)->list[i] = dll_create(1 << (i + 3));
         (*v)->list[i]->address = address;
+        (*w)->list[i] = dll_create(1 << (i + 3));
+        (*w)->list[i]->data_size = -1; // asta inseamna ca e goala;
         if (!(*v)->list[i]) {
             fprintf(stderr, "malloc() failed\n");
             for (int j = i - 1; j >= 0; --j) {
@@ -51,7 +69,6 @@ void initheap(SegregatedFreeLists **v, size_t heapbase, int nlists, int bytes, i
             free((*v)->list);
             return;
         }
-        // aloc bytes / (1 << (i + 3)) noduri;
         size_t node_address = address;
         for (int j = 0; j < bytes / (1 << (i + 3)); ++j) {
             // aloc gol;
@@ -65,7 +82,8 @@ void initheap(SegregatedFreeLists **v, size_t heapbase, int nlists, int bytes, i
     // printaddress(*v);
 }
 
-void my_malloc(doubly_linked_list_t *w, SegregatedFreeLists *v, int bytes)
+// w are aceeasi structura cu segregated asta dar fac listele pe parcurs si dimensiunile o sa fie tot pe un rand, fix cat are primul nod din lista respectiva;
+void my_malloc(OccupiedMemory *w, SegregatedFreeLists *v, int bytes)
 {
     if (!v)
         return;
@@ -85,7 +103,7 @@ void my_malloc(doubly_linked_list_t *w, SegregatedFreeLists *v, int bytes)
             }
         }
     }
-    if (index = -1) {
+    if (index == -1) {
         fprintf(stderr, "Out of memory\n");
         return;
     }
@@ -93,9 +111,16 @@ void my_malloc(doubly_linked_list_t *w, SegregatedFreeLists *v, int bytes)
     if (ok == 0) {
         // nu fragmentez;
         dll_node_t *node = dll_remove_nth_node(v->list[index], 0);
-        if (!w)
-            w = dll_create(v->list[index]->data_size);
-        dll_add_nth_node(w, 0, node->address);
+        // tre sa adaug nodul la w
+        for (int i = 0; i < w->nlists; ++i) {
+            if (w->list[i]->data_size == -1) {
+                dll_add_nth_node(w->list[i], 0, node->address);
+                w->list[i]->data_size = v->list[index]->data_size;
+            } else if (w->list[i]->data_size == v->list[index]->data_size) {
+                dll_add_nth_node(w->list[i], 0, node->address);
+            }
+        }
+        // trebuie sa fac cumva cand adaug primul nod intr-o lista de asta din w sa specific si ce tip de data are;
         free(node);
     } else if (ok == 1) {
         // fragmentez;
@@ -118,7 +143,7 @@ int main(void)
         scanf("%s", buffer);
         if (!strcmp(buffer, "INIT_HEAP")) {
             scanf("%x %d %d %d", &heapbase, &nlists, &nbytes, &type_rec);
-            initheap(&v, heapbase, nlists, nbytes, type_rec);
+            initheap(&v, &w, heapbase, nlists, nbytes, type_rec);
         } else if (!strcmp(buffer, "MALLOC")) {
             scanf("%d", &nbytes);
             my_malloc(w, v, nbytes);
