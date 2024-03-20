@@ -39,27 +39,28 @@ void initheap(SegregatedFreeLists **v, OccupiedMemory **w,size_t heapbase, int n
 		return;
 	}
 
-	// *w = (OccupiedMemory*)malloc(sizeof(OccupiedMemory));
-	// if (!*w) {
-	// 	fprintf(stderr, "malloc() failed\n");
-	// 	free((*v)->list);
-	// 	free(*v);
-	// 	return;
-	// }
-	// (*w)->list = (doubly_linked_list_t**)malloc(nlists * sizeof(doubly_linked_list_t*));
-	// if (!(*w)->list) {
-	// 	fprintf(stderr, "malloc() failed\n");
-	// 	free((*v)->list);
-	// 	free(*v);
-	// 	free(*w);
-	// 	return;
-	// }
+	*w = (OccupiedMemory*)malloc(sizeof(OccupiedMemory));
+	if (!*w) {
+		fprintf(stderr, "malloc() failed\n");
+		free((*v)->list);
+		free(*v);
+		return;
+	}
+	(*w)->list = (doubly_linked_list_t**)malloc(nlists * sizeof(doubly_linked_list_t*));
+	if (!(*w)->list) {
+		fprintf(stderr, "malloc() failed\n");
+		free((*v)->list);
+		free(*v);
+		free(*w);
+		return;
+	}
+	(*w)->nlists = nlists;
 	size_t address = heapbase;
 	for (int i = 0; i < nlists; ++i) {
 		address = address + i * bytes;
 		(*v)->list[i] = dll_create(1 << (i + 3));
 		(*v)->list[i]->address = address;
-		// (*w)->list[i]->data_size = -1; // asta inseamna ca e goala;
+		(*w)->list[i] = dll_create(0);
 		if (!(*v)->list[i]) {
 			fprintf(stderr, "malloc() failed\n");
 			for (int j = i - 1; j >= 0; --j) {
@@ -86,7 +87,24 @@ void my_malloc(OccupiedMemory **w, SegregatedFreeLists **v, int bytes)
 {
 	if (!*v)
 		return;
-	int index = -1, ok = -1;
+	int ok = 0;
+	for (int i = 0; i < (*w)->nlists; ++i) {
+		if ((*w)->list[i]->data_size == 0) {
+			// aloc aici;
+			ok = 1;
+			break;
+		}
+	}
+	if (!ok) {
+		// n am gasit loc liber, deci realoc w cu memorie dubla;
+		(*w)->list = realloc((*w)->list, 2 * (*w)->nlists);
+		for (int i = (*w)->nlists; i < 2 * (*w)->nlists; ++i)
+			(*w)->list[i] = dll_create(0);
+		(*w)->nlists *= 2;
+	}
+
+	int index = -1;
+	ok = -1;
 	for (int i = 0; i < (*v)->nlists; ++i) {
 		if ((*v)->list[i]->data_size > bytes) {
 			if ((*v)->list[i]->head) {
@@ -192,6 +210,7 @@ int main(void)
 			
 		} else if (!strcmp(buffer, "DESTROY_HEAP")) {
 			// free
+
 			ok = 0;
 		}
 	}
