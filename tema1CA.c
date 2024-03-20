@@ -57,7 +57,7 @@ void initheap(SegregatedFreeLists **v, OccupiedMemory **w,size_t heapbase, int n
 	(*w)->nlists = nlists;
 	size_t address = heapbase;
 	for (int i = 0; i < nlists; ++i) {
-		address = address + i * bytes;
+		address = heapbase + i * bytes;
 		(*v)->list[i] = dll_create(1 << (i + 3));
 		(*v)->list[i]->address = address;
 		(*w)->list[i] = dll_create(0);
@@ -70,9 +70,9 @@ void initheap(SegregatedFreeLists **v, OccupiedMemory **w,size_t heapbase, int n
 			return;
 		}
 		size_t node_address = address;
+		size_t node_bytes = bytes / (bytes / (1 << i + 3));
 		for (int j = 0; j < bytes / (1 << (i + 3)); ++j) {
-			// aloc gol;
-			node_address += j * bytes / (bytes / (1 << (i + 3)));
+			node_address = address + j * node_bytes;
 			dll_add_nth_node((*v)->list[i], bytes / (1 << (i + 3)), node_address);
 		}
 	}
