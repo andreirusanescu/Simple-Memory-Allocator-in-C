@@ -24,12 +24,12 @@ typedef struct {
 	int nbytes; // pe lista
 	int type_rec;
 	doubly_linked_list_t **list;
-} SegregatedFreeLists;
+} sfl_t;
 
 typedef struct {
 	int nlists;
 	doubly_linked_list_t **list;
-} OccupiedMemory;
+} mem_t;
 
 doubly_linked_list_t* dll_create(unsigned int data_size)
 {
@@ -68,7 +68,7 @@ void dll_add_nth_node(doubly_linked_list_t *list, unsigned int n, size_t address
 		fprintf(stderr, "malloc() failed\n");
 		return;
 	}
-	// elem->data = data;
+	elem->data = malloc(sizeof(list->data_size));
 	elem->address = address;
 	if (n == 0) {
 		if (!list->size) {

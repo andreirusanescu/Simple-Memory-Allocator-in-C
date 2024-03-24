@@ -12,7 +12,19 @@ pt 256 am 4 noduri
 pt 512 am 2 noduri
 pt 1024 am 1 nod */
 
-void printaddress(SegregatedFreeLists *v)
+void printaddress(sfl_t *v)
+{
+	for (int i = 0; i < v->nlists; ++i) {
+		dll_node_t *node = v->list[i]->head;
+		for (int j = 0; j < v->list[i]->size && node; ++j) {
+			printf("%lx ", node->address);
+			node = node->next;
+		}
+		printf("\n");
+	}
+}
+
+void printaddress2(mem_t *v)
 {
 	for (int i = 0; i < v->nlists; ++i) {
 		dll_node_t *node = v->list[i]->head;
@@ -25,9 +37,9 @@ void printaddress(SegregatedFreeLists *v)
 }
 
 // merge bine functia asta
-void initheap(SegregatedFreeLists **v, OccupiedMemory **w,size_t heapbase, int nlists, int bytes, int type_rec)
+void initheap(sfl_t **v, mem_t **w,size_t heapbase, int nlists, int bytes, int type_rec)
 {
-	*v = (SegregatedFreeLists*)malloc(sizeof(SegregatedFreeLists));
+	*v = (sfl_t*)malloc(sizeof(sfl_t));
 	if (!*v) {
 		fprintf(stderr, "malloc() failed\n");
 		return;
@@ -39,7 +51,7 @@ void initheap(SegregatedFreeLists **v, OccupiedMemory **w,size_t heapbase, int n
 		return;
 	}
 
-	*w = (OccupiedMemory*)malloc(sizeof(OccupiedMemory));
+	*w = (mem_t*)malloc(sizeof(mem_t));
 	if (!*w) {
 		fprintf(stderr, "malloc() failed\n");
 		free((*v)->list);
@@ -79,11 +91,11 @@ void initheap(SegregatedFreeLists **v, OccupiedMemory **w,size_t heapbase, int n
 	(*v)->nbytes = bytes;
 	(*v)->nlists = nlists;
 	(*v)->type_rec = type_rec;
-	printaddress(*v);
+	
 }
 
 // w are aceeasi structura cu segregated asta dar fac listele pe parcurs si dimensiunile o sa fie tot pe un rand, fix cat are primul nod din lista respectiva;
-void my_malloc(OccupiedMemory **w, SegregatedFreeLists **v, int bytes)
+void my_malloc(mem_t **w, sfl_t **v, int bytes)
 {
 	if (!*v)
 		return;
@@ -129,15 +141,16 @@ void my_malloc(OccupiedMemory **w, SegregatedFreeLists **v, int bytes)
 		// nu fragmentez;
 		dll_node_t *node = dll_remove_nth_node((*v)->list[index], 0);
 		for (int i = 0; i < (*w)->nlists; ++i) {
-			// trebuie schimbat putin aici;
 			/* IMI ALOC ARRAYUL DE LISTE PT W SEPARAT SI DUPA VERIFIC DIN LISTA IN LISTA
 			DACA GASESC SI DACA NU DAU REALLOC SI MAI ADAUG O LISTA SI TOT ASA*/
-			// if ((*w)->list[i]->data_size == -1) {
-			// 	(*w)->list[i]->data_size = (*v)->list[index]->data_size;
-			// 	dll_add_nth_node((*w)->list[i], 0, node->address);
-			// } else if ((*w)->list[i]->data_size == (*v)->list[index]->data_size) {
-			// 	dll_add_nth_node((*w)->list[i], 0, node->address);
-			// }
+			if ((*w)->list[i]->data_size == bytes) {
+				dll_add_nth_node((*w)->list[i], 0, node->address);
+				break;
+			} else if ((*w)->list[i]->data_size == 0) {
+				dll_add_nth_node((*w)->list[i], 0, node->address);
+				(*w)->list[i]->data_size = bytes;
+				break;
+			}
 		}
 		free(node->data);
 		free(node);
@@ -148,7 +161,7 @@ void my_malloc(OccupiedMemory **w, SegregatedFreeLists **v, int bytes)
 		dll_node_t *node = dll_remove_nth_node((*v)->list[index], 0);
 		size_t rest_address = node->address + bytes;
 		for (int i = 0; i < (*v)->nlists; ++i) {
-			if ((*v)->list[i]->size == dim_free) {
+			if ((*v)->list[i]->data_size == dim_free) {
 				dll_add_nth_node((*v)->list[i], (*v)->list[i]->size, rest_address);
 				break;
 			} else if ((*v)->list[i]->size > dim_free) {
@@ -160,9 +173,10 @@ void my_malloc(OccupiedMemory **w, SegregatedFreeLists **v, int bytes)
 				(*v)->nlists++;
 				(*v)->list[(*v)->nlists - 1] = dll_create(dim_free);
 				(*v)->list[(*v)->nlists - 1]->address = rest_address;
+				(*v)->list[(*v)->nlists - 1]->data_size = dim_free;
 				dll_add_nth_node((*v)->list[(*v)->nlists - 1], (*v)->list[(*v)->nlists - 1]->size, rest_address);
 				for (int j = (*v)->nlists - 1; j >= 1; --j) {
-					if ((*v)->list[j - 1]->size > (*v)->list[j]->size) {
+					if ((*v)->list[j - 1]->data_size > (*v)->list[j]->data_size) {
 						doubly_linked_list_t* aux = (*v)->list[j - 1];
 						(*v)->list[j - 1] = (*v)->list[j];
 						(*v)->list[j] = aux;
@@ -172,23 +186,51 @@ void my_malloc(OccupiedMemory **w, SegregatedFreeLists **v, int bytes)
 			}
 		}
 		// adaugarea nodului in lista:
-		// for (int i = 0; i < (*w)->nlists; ++i) {
-		// 	if ((*w)->list[i]->data_size == -1) {
-		// 		(*w)->list[i]->data_size = (*w)->list[index]->data_size;
-		// 		dll_add_nth_node((*w)->list[i], 0, node->address);
-		// 	} else if ((*w)->list[i]->data_size == (*w)->list[index]->data_size) {
-		// 		dll_add_nth_node((*w)->list[i], 0, node->address);
-		// 	}
-		// }
+		for (int i = 0; i < (*w)->nlists; ++i) {
+			if ((*w)->list[i]->data_size == bytes) {
+				dll_add_nth_node((*w)->list[i], 0, node->address);
+				break;
+			} else if ((*w)->list[i]->data_size == 0) {
+				dll_add_nth_node((*w)->list[i], 0, node->address);
+				(*w)->list[i]->data_size = bytes;
+				break;
+			}
+		}
+		free(node->data);
 		free(node);
+	}
+	// printaddress(*v);
+	// printaddress2(*w);
+}
+
+void my_free(mem_t **w, sfl_t **v,size_t address)
+{
+	if (address == 0)
+		return;
+	int ok = 0;
+	for (int i = 0; i < (*w)->nlists; ++i) {
+		dll_node_t *node = (*w)->list[i]->head;
+		for (int j = 0; j < (*w)->list[i]->size && node; ++j) {
+			if (node->address == address) {
+				ok = 1;
+				// tre sa l scot si sa creez pt v o lista de dimensiunea aia daca nu are deja;
+				dll_node_t *aux = dll_remove_nth_node((*w)->list[i], j);
+				
+				break;
+			}
+			node = node->next;
+		}
+	}
+	if (!ok) {
+		printf("Invalid free\n");
 	}
 }
 
 int main(void)
 {
 	char buffer[MAX_LEN];
-	SegregatedFreeLists *v = NULL;
-	OccupiedMemory *w = NULL;
+	sfl_t *v = NULL;
+	mem_t *w = NULL;
 	int heapbase, nlists, nbytes, type_rec;
 	int ok = 1;
 	while (ok) {
@@ -201,7 +243,7 @@ int main(void)
 			my_malloc(&w, &v, nbytes);
 		} else if (!strcmp(buffer, "FREE")) {
 			scanf("%x", &heapbase);
-			// my_free(&w, heapbase);
+			my_free(&w, &v, heapbase);
 		} else if (!strcmp(buffer, "READ")) {
 			
 		} else if (!strcmp(buffer, "WRITE")) {
