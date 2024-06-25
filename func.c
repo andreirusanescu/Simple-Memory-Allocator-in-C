@@ -17,7 +17,7 @@ typedef struct info_dump {
 typedef struct info_node {
 	size_t address;
 	int fragment;
-	// int siz/e;
+	int size;
 	void *data;		// actual data of the node;
 } info_node;
 
@@ -43,8 +43,8 @@ typedef struct {
 } sfl_t;
 
 typedef struct {
-	int nlists;
-	doubly_linked_list_t **list;
+	int nblocks;
+	doubly_linked_list_t *list;
 } mem_t;
 
 doubly_linked_list_t* dll_create(unsigned int data_size)
@@ -143,7 +143,7 @@ void dll_add_nth_node(doubly_linked_list_t *list, unsigned int n, size_t address
 	}
 }
 
-void add_in_order(doubly_linked_list_t *list, size_t address)
+void add_in_order(doubly_linked_list_t *list, size_t address, size_t bytes)
 {
 	if (!list)
 		return;
@@ -152,14 +152,12 @@ void add_in_order(doubly_linked_list_t *list, size_t address)
 		fprintf(stderr, "malloc() failed\n");
 		return;
 	}
-	// elem->data = malloc(sizeof(list->data_size));
-	// elem->address = address;
 	elem->data = malloc(sizeof(info_node));
 	info_node *node = elem->data;
 	node->address = address;
 	node->fragment = 0;
-	node->data = malloc(list->data_size);
-	// node->size = list->data_size;
+	node->data = malloc(bytes);
+	node->size = bytes;
 	if (!list->size) {
 		// lista e goala
 		list->head = elem;
