@@ -3,16 +3,32 @@
 
 #define MAX_LEN 600
 
-typedef struct dll_node_t
-{
-	void *data;
+typedef struct info_dump {
+	int total_memory;
+	int allocated_memory;
+	int free_mem;
+	int free_blocks;
+	int allocated_blocks;
+	int mallocs;
+	int fragmentations;
+	int frees;
+} info_dump;
+
+typedef struct info_node {
 	size_t address;
+	int fragment;
+	// int siz/e;
+	void *data;		// actual data of the node;
+} info_node;
+
+typedef struct dll_node_t {
+	void *data;
 	struct dll_node_t* next;
 	struct dll_node_t* prev;
 } dll_node_t;
 
 typedef struct {
-	size_t address; // adresa headului practic;
+	// size_t address; // adresa headului practic;
 	dll_node_t* head;
 	dll_node_t* tail;
 	unsigned int data_size; // marimea tipului de date din lista;
@@ -68,8 +84,14 @@ void dll_add_nth_node(doubly_linked_list_t *list, unsigned int n, size_t address
 		fprintf(stderr, "malloc() failed\n");
 		return;
 	}
-	elem->data = malloc(sizeof(list->data_size));
-	elem->address = address;
+	// elem->data = malloc(sizeof(list->data_size));
+	// elem->address = address;
+	elem->data = malloc(sizeof(info_node));
+	info_node *node = elem->data;
+	node->address = address;
+	node->fragment = 0;
+	// este doar fictiva alocarea asta
+	// node->data = malloc(list->data_size);
 	if (n == 0) {
 		if (!list->size) {
 			// lista e goala
@@ -118,6 +140,63 @@ void dll_add_nth_node(doubly_linked_list_t *list, unsigned int n, size_t address
 			p->next = elem;
 			list->size++;
 		}
+	}
+}
+
+void add_in_order(doubly_linked_list_t *list, size_t address)
+{
+	if (!list)
+		return;
+	dll_node_t *elem = malloc(sizeof(dll_node_t));
+	if (!elem) {
+		fprintf(stderr, "malloc() failed\n");
+		return;
+	}
+	// elem->data = malloc(sizeof(list->data_size));
+	// elem->address = address;
+	elem->data = malloc(sizeof(info_node));
+	info_node *node = elem->data;
+	node->address = address;
+	node->fragment = 0;
+	node->data = malloc(list->data_size);
+	// node->size = list->data_size;
+	if (!list->size) {
+		// lista e goala
+		list->head = elem;
+		list->tail = elem;
+		list->head->next = NULL;
+		list->tail->prev = NULL;
+		list->head->prev = NULL;
+		list->tail->next = NULL;
+		list->size++;
+	} else {
+		dll_node_t *p = list->head;
+		if (((info_node *)list->head->data)->address > ((info_node *)elem->data)->address) {
+			elem->prev = NULL;
+			elem->next = list->head;
+			list->head->prev = elem;
+			list->head = elem;
+			list->size++;
+			return;
+		}
+
+		while (p->next) {
+			if ((((info_node *)p->data)->address <= address) && (((info_node *)p->next->data)->address >= address)) {
+				// inserez aici;
+				elem->next = p->next;
+				elem->prev = p;
+				p->next->prev = elem;
+				p->next = elem;
+				list->size++;
+				return;
+			}
+			p = p->next;
+		}
+		elem->next = NULL;
+		elem->prev = list->tail;
+		list->tail->next = elem;
+		list->tail = elem;
+		list->size++;
 	}
 }
 

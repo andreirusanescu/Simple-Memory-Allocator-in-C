@@ -19,7 +19,7 @@ void printaddress(sfl_t *v)
 	for (int i = 0; i < v->nlists; ++i) {
 		dll_node_t *node = v->list[i]->head;
 		for (int j = 0; j < v->list[i]->size && node; ++j) {
-			printf("%lx ", node->address);
+			printf("%lx ", ((info_node*)node->data)->address);
 			node = node->next;
 		}
 		printf("\n");
@@ -33,7 +33,7 @@ void printaddress2(mem_t *v)
 	for (int i = 0; i < v->nlists; ++i) {
 		dll_node_t *node = v->list[i]->head;
 		for (int j = 0; j < v->list[i]->size && node; ++j) {
-			printf("%lx ", node->address);
+			printf("%lx ", ((info_node*)node->data)->address);
 			node = node->next;
 		}
 		printf("\n");
@@ -71,10 +71,11 @@ void initheap(sfl_t **v, mem_t **w, info_dump *id, size_t heapbase, int nlists, 
 	}
 	(*w)->nlists = nlists;
 	size_t address = heapbase;
+	id->free_blocks = 0;
 	for (int i = 0; i < nlists; ++i) {
 		address = heapbase + i * bytes;
 		(*v)->list[i] = dll_create(1 << (i + 3));
-		(*v)->list[i]->address = address;
+		// (*v)->list[i]->address = address;
 		(*w)->list[i] = dll_create(0);
 		if (!(*v)->list[i]) {
 			fprintf(stderr, "malloc() failed\n");
@@ -88,7 +89,7 @@ void initheap(sfl_t **v, mem_t **w, info_dump *id, size_t heapbase, int nlists, 
 		for (int j = 0; j < bytes / (1 << (i + 3)); ++j) {
 			node_address = address + j * node_bytes;
 			add_in_order((*v)->list[i], node_address);
-			
+			id->free_blocks++;
 		}
 	}
 	id->allocated_blocks = 0;
@@ -98,10 +99,11 @@ void initheap(sfl_t **v, mem_t **w, info_dump *id, size_t heapbase, int nlists, 
 	id->fragmentations = 0;
 	id->mallocs = 0;
 	id->frees = 0;
-	id->free_blocks = nlists;
+	
 	(*v)->nbytes = bytes;
 	(*v)->nlists = nlists;
 	(*v)->type_rec = type_rec;
+	// printaddress(*v);
 }
 
 void sort_lists(sfl_t *v)
@@ -129,7 +131,7 @@ void parse_lists(sfl_t **v, size_t dim_free, size_t rest_address)
 			}
 			(*v)->nlists++;
 			(*v)->list[(*v)->nlists - 1] = dll_create(dim_free);
-			(*v)->list[(*v)->nlists - 1]->address = rest_address;
+			// (*v)->list[(*v)->nlists - 1]->address = rest_address;
 			(*v)->list[(*v)->nlists - 1]->data_size = dim_free;
 			// adaug in ultima lista;
 			add_in_order((*v)->list[(*v)->nlists - 1], rest_address);
@@ -141,7 +143,7 @@ void parse_lists(sfl_t **v, size_t dim_free, size_t rest_address)
 }
 
 // w are aceeasi structura cu segregated asta dar fac listele pe parcurs si dimensiunile o sa fie tot pe un rand, fix cat are primul nod din lista respectiva;
-void my_malloc(mem_t **w, sfl_t **v, int bytes)
+void my_malloc(mem_t **w, sfl_t **v, info_dump *id, int bytes)
 {
 	if (!*v || !bytes)
 		return;
@@ -185,6 +187,7 @@ void my_malloc(mem_t **w, sfl_t **v, int bytes)
 	// am gasit indexul;
 	if (ok == 0) {
 		// nu fragmentez;
+		id->free_blocks--;
 		dll_node_t *node = dll_remove_nth_node((*v)->list[index], 0);
 		// verific sa n am liste goale;
 		if (!(*v)->list[index]->size) {
@@ -195,10 +198,12 @@ void my_malloc(mem_t **w, sfl_t **v, int bytes)
 		}
 		for (int i = 0; i < (*w)->nlists; ++i) {
 			if ((*w)->list[i]->data_size == bytes) {
-				add_in_order((*w)->list[i], node->address);
+				add_in_order((*w)->list[i], ((info_node*)node->data)->address);
+				// add_used_node(node, w, i);
 				break;
 			} else if ((*w)->list[i]->data_size == 0) {
-				add_in_order((*w)->list[i], node->address);
+				add_in_order((*w)->list[i], ((info_node*)node->data)->address);
+				// add_used_node(node, w, i);
 				(*w)->list[i]->data_size = bytes;
 				break;
 			}
@@ -206,43 +211,52 @@ void my_malloc(mem_t **w, sfl_t **v, int bytes)
 		free(node->data);
 		free(node);
 	} else if (ok == 1) {
+		id->fragmentations++;
 		size_t dim_free = (*v)->list[index]->data_size - bytes;
 		// trebuie sa aloc un bloc de memorie de fix bytes, si unul de dim bytes si pe ala de dim bytes sa il bag in vectorul de liste unde trebuie;
 		// pe ala de dim bytes il adaug in lista mea
 		// trebuie sa cresc fragmentarea la noduri;
 		dll_node_t *node = dll_remove_nth_node((*v)->list[index], 0);
-		size_t rest_address = node->address + bytes;
+		size_t rest_address = ((info_node*)node->data)->address + bytes;
 
 		parse_lists(v, dim_free, rest_address);
 		// adaugarea nodului in lista:
 		for (int i = 0; i < (*w)->nlists; ++i) {
 			if ((*w)->list[i]->data_size == bytes) {
-				add_in_order((*w)->list[i], node->address);
+				add_in_order((*w)->list[i], ((info_node*)node->data)->address);
+				// add_used_node(node, w, i);
 				break;
 			} else if ((*w)->list[i]->data_size == 0) {
-				add_in_order((*w)->list[i], node->address);
+				add_in_order((*w)->list[i], ((info_node*)node->data)->address);
+				// add_used_node(node, w, i);
 				(*w)->list[i]->data_size = bytes;
 				break;
 			}
 		}
+		
 		free(node->data);
 		free(node);
 	}
+	id->mallocs++;
+	id->allocated_memory += bytes;
+	id->free_mem -= bytes;
+	id->allocated_blocks++;
 	// printf("Lista goala:\n");
 	// printaddress(*v);
 	// printf("Lista ocupata\n");
 	// printaddress2(*w);
 }
 
-void my_free(mem_t **w, sfl_t **v, size_t address)
+void my_free(mem_t **w, sfl_t **v, info_dump *id, size_t address)
 {
+	id->frees++;
 	if (address == 0)
 		return;
 	int ok = 0;
 	for (int i = 0; i < (*w)->nlists; ++i) {
 		dll_node_t *node = (*w)->list[i]->head;
 		for (int j = 0; j < (*w)->list[i]->size && node; ++j) {
-			if (node->address == address) {
+			if (((info_node*)node->data)->address == address) {
 				ok = 1;
 				// tre sa l scot si sa creez pt v o lista de dimensiunea aia daca nu are deja;
 				dll_node_t *aux = dll_remove_nth_node((*w)->list[i], j);
@@ -252,9 +266,8 @@ void my_free(mem_t **w, sfl_t **v, size_t address)
 					(*w)->nlists--;
 					(*w)->list = (doubly_linked_list_t**)realloc((*w)->list, (*w)->nlists * sizeof(doubly_linked_list_t *));
 				}
-				// fac o functie prin care sa parsez v dupa dimensiune si
-				//  daca gasesc dimensiunea bine adaug in order acolo, daca nu realloc si sortez;
-				parse_lists(v, (*w)->list[i]->data_size, aux->address);
+				// fac o functie prin care sa parsez v dupa dimensiune si daca gasesc dimensiunea bine adaug in order acolo, daca nu realloc si sortez;
+				parse_lists(v, (*w)->list[i]->data_size, ((info_node*)aux->data)->address);
 				free(aux->data);
 				free(aux);
 				break;
@@ -277,18 +290,27 @@ void dump_memory(sfl_t *v, mem_t *w, info_dump *id)
 	printf("Number of free blocks: %d\n", id->free_blocks);
 	printf("Number of allocated blocks: %d\n", id->allocated_blocks);
 	printf("Number of malloc calls: %d\n", id->mallocs);
+	printf("Number of fragmentations: %d\n", id->fragmentations);
 	printf("Number of free calls: %d\n", id->frees);
 	for (int i = 0; i < v->nlists; ++i) {
-		printf("Blocks with %d bytes %d free block(s) : ", v->list[i]->data_size, v->list[i]->size);
+		printf("Blocks with %d bytes - %d free block(s) : ", v->list[i]->data_size, v->list[i]->size);
 		dll_node_t *node = v->list[i]->head;
 		for (int j = 0; j < v->list[i]->size && node; ++j) {
-			printf("%lx ", node->address);
+			printf("0x%lx ", ((info_node*)node->data)->address);
 			node = node->next;
 		}
 		printf("\n");
 	}
 	printf("Allocated blocks : ");
-	
+	for (int i = 0; i < w->nlists; ++i) {
+		
+		dll_node_t *node = w->list[i]->head;
+		while (node) {
+			printf("(0x%lx - %d) ", ((info_node *)node->data)->address, w->list[i]->data_size);
+			node = node->next;
+		}
+	}
+	printf("\n");
 	printf("-----DUMP-----\n");
 }
 
@@ -309,17 +331,17 @@ int main(void)
 			initheap(&v, &w, id, heapbase, nlists, nbytes, type_rec);
 		} else if (!strcmp(buffer, "MALLOC")) {
 			scanf("%d", &nbytes);
-			my_malloc(&w, &v, nbytes);
+			my_malloc(&w, &v, id, nbytes);
 		} else if (!strcmp(buffer, "FREE")) {
 			scanf("%x", &heapbase);
-			my_free(&w, &v, heapbase);
+			my_free(&w, &v, id, heapbase);
 		} else if (!strcmp(buffer, "READ")) {
 			scanf("%x %d", &heapbase, &nbytes);
 			// my_read(w, heapbase, nbytes);
 		} else if (!strcmp(buffer, "WRITE")) {
 			
 		} else if (!strcmp(buffer, "DUMP_MEMORY")) {
-			
+			dump_memory(v, w, id);
 		} else if (!strcmp(buffer, "DESTROY_HEAP")) {
 			// free
 
