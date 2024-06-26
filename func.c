@@ -18,6 +18,7 @@ typedef struct info_node {
 	size_t address;
 	int fragment;
 	int size;
+	int bytes;
 	void *data;		// actual data of the node;
 } info_node;
 

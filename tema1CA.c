@@ -271,55 +271,51 @@ void my_read(mem_t *w, size_t start_address, size_t bytes)
 	int ok = 0;
 	int j = 0;
 	while (node) {
-		if (((info_node *)node->data)->address == start_address && ((info_node *)node->data)->size >= bytes) {
-			for (int i = 0; i < bytes; ++i) {
-				printf("%c", *((char *)(((info_node *)node->data)->data ) + i));
-			}
+		info_node *date = ((info_node *)node->data);
+		if (date->address == start_address && date->size >= bytes) {
+			for (int i = 0; i < bytes; ++i)
+				printf("%c", *((char *)(((info_node *)node->data)->data) + i));
 			printf("\n");
 			ok = 1;
-		} else if (((info_node *)node->data)->address == start_address) {
-			while (node->next && ((info_node *)node->next->data)->address == ((info_node *)node->data)->address + ((info_node *)node->data)->size) {
+		} else if (date->address == start_address) {
+			// se intinde pe mai multe noduri;
+			while (node->next &&  ((info_node *)node->next->data)->address == date->address + date->size) {
 				int i = 0;
-				for (int i = 0; i < bytes; ++i) {
-					output[j++] = *((char *)(((info_node *)node->data)->data ) + i);
+				for (i = 0; i < date->size; ++i) {
+					output[j] = *((char *)(date->data) + i);
+					++j;
 				}
-				bytes -= ((info_node *)node->data)->size;
+				bytes -= i;
+				
 				if (bytes == 0) {
 					ok = 1; 
 					break;
 				}
 				node = node->next;
+				date = ((info_node *)node->data);
 			}
-		} else if (((info_node *)node->data)->address < start_address && ((info_node *)node->data)->address + ((info_node *)node->data)->size > start_address) {
-			// if (((info_node *)node->data)->address == start_address && ((info_node *)node->data)->size >= bytes)
-			printf("%ld\n", ((info_node *)node->data)->size - (start_address - ((info_node *)node->data)->address));
-			if (((info_node *)node->data)->size - (start_address - ((info_node *)node->data)->address) >= bytes) {
-				for (int i = start_address - ((info_node *)node->data)->address; i < bytes + 1; ++i) {
-					printf("%c", *((char *)(((info_node *)node->data)->data ) + i));
+			if (!ok && bytes <= date->bytes && date->address == ((info_node *)node->prev->data)->address + ((info_node *)node->prev->data)->size) {
+				int i = 0;
+				for (i = 0; i < bytes; ++i) {
+					output[j] = *((char *)(date->data) + i);
+					++j;
 				}
-				printf("\n");
-				ok = 1;
-			} else {
-				while (node->next && ((info_node *)node->next->data)->address == ((info_node *)node->data)->address + ((info_node *)node->data)->size) {
-					for (int i = start_address - ((info_node *)node->data)->address; i < bytes + 1; ++i) {
-						output[j++] = *((char *)(((info_node *)node->data)->data ) + i);
-					}
-					
-					bytes -= ((info_node *)node->data)->size;
-					if (bytes == 0) {
-						ok = 1; 
-						break;
-					}
-					start_address = 0;
-					node = node->next;
+				bytes -= i;
+				if (bytes == 0) {
+					ok = 1; 
 				}
 			}
-			
 		}
 		if (ok) break;
 		node = node->next;
 	}
-	printf("%s\n", output);
+	if (ok) {
+		printf("%s\n", output);
+	} else {
+		// printf("Segmentation fault\n");
+		// // dump_memory()
+		// exit(-1);
+	}
 	free(output);
 }
 
@@ -328,44 +324,63 @@ void my_write(mem_t *w, size_t start_address, char *string, size_t bytes)
 	dll_node_t *node = w->list->head;
 	int ok = 0;
 	int j = 0;
-	if (strlen(string) > bytes) {
+	if (strlen(string) > bytes)
 		bytes = strlen(string);
-	}
+
 	while (node) {
+		printf("%ld %d %ld\n",((info_node *)node->data)->address, ((info_node *)node->data)->size, start_address);
 		if (((info_node *)node->data)->address == start_address && ((info_node *)node->data)->size >= bytes) {
 			int i = 0;
-			for (int i = 0; i < bytes; ++i) {
-				// printf("%c", *(char *)(((info_node *)node->data)->data));
+			for (i = 0; i < bytes; ++i)
 				*((char *)(((info_node *)node->data)->data ) + i) = string[i];
-			}
 			ok = 1;
+			((info_node *)node->data)->bytes = bytes;
+
+			// MAI MULTE NODURI
 		} else if (((info_node *)node->data)->address == start_address) {
 			dll_node_t *aux = node;
 			int bts = bytes;
 			while (node->next && ((info_node *)node->next->data)->address == ((info_node *)node->data)->address + ((info_node *)node->data)->size) {
-				
 				bytes -= ((info_node *)node->data)->size;
-				if (bytes == 0) {
+				if (bytes <= 0) {
 					ok = 1;
-					// am loc sa ii bag pe toti
 					break;
 				}
 				node = node->next;
 			}
+			if (!ok && ((info_node *)node->data)->address == ((info_node *)node->prev->data)->address + ((info_node *)node->prev->data)->size) {
+				bytes -= ((info_node *)node->data)->size;
+				if (bytes <= 0)
+					ok = 1;
+			}
 			if (ok) {
-				// ii bag pe toti acum;
 				node = aux;
 				bytes = bts;
+				int verif = 0;
 				while (node->next && ((info_node *)node->next->data)->address == ((info_node *)node->data)->address + ((info_node *)node->data)->size) {
 					int i = 0;
-					for (int i = 0; i < bytes; ++i) {
+					for (i = 0; i < ((info_node *)node->data)->size; ++i) {
 						*((char *)(((info_node *)node->data)->data ) + i) = string[j++];
+						((info_node *)node->data)->bytes++;
 					}
+					bytes -= i;
 					node = node->next;
-					bytes -= ((info_node *)node->data)->size; 
+					if (bytes <= 0) {
+						verif = 1;
+						break;
+					}
+				}
+				if (!verif && ((info_node *)node->data)->address == ((info_node *)node->prev->data)->address + ((info_node *)node->prev->data)->size) {
+					int i = 0;
+					for (i = 0; i < bytes; ++i) {
+						*((char *)(((info_node *)node->data)->data ) + i) = string[j++];
+						((info_node *)node->data)->bytes++;
+					}
+					bytes -= i;
+					if (bytes <= 0) verif = 1;
 				}
 			}
-		}
+		} else if (((info_node *)node->data)->address > start_address) break;
 		if (ok) break;
 		node = node->next;
 	}
