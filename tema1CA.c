@@ -207,10 +207,12 @@ void my_malloc(mem_t **w, sfl_t **v, info_dump *id, int bytes)
 
 void my_free(mem_t **w, sfl_t **v, info_dump *id, size_t address)
 {
-	id->frees++;
-	if (address == 0)
+	if (address == 0) {
+		id->frees++;
 		return;
+	}
 	int ok = 0;
+	
 	dll_node_t *node = (*w)->list->head;
 	int i = 0;
 	while (node) {
@@ -218,6 +220,7 @@ void my_free(mem_t **w, sfl_t **v, info_dump *id, size_t address)
 			dll_node_t *aux = dll_remove_nth_node((*w)->list, i);
 			parse_lists(v, ((info_node *)aux->data)->size, ((info_node *)aux->data)->address);
 			id->allocated_memory -= ((info_node *)aux->data)->size;
+			id->free_mem += ((info_node *)aux->data)->size;
 			free(aux->data);
 			free(aux);
 			ok = 1;
@@ -231,6 +234,7 @@ void my_free(mem_t **w, sfl_t **v, info_dump *id, size_t address)
 	// printaddress2(*w);
 	if (!ok)
 		printf("Invalid free\n");
+	else id->frees++;
 }
 
 void dump_memory(sfl_t *v, mem_t *w, info_dump *id)
@@ -240,19 +244,21 @@ void dump_memory(sfl_t *v, mem_t *w, info_dump *id)
 	printf("Total memory: %d bytes\n", id->total_memory);
 	printf("Total allocated memory: %d bytes\n", id->allocated_memory);
 	printf("Total free memory: %d bytes\n", id->free_mem);
-	printf("Number of free blocks: %d\n", id->free_blocks);
+	printf("Free blocks: %d\n", id->free_blocks);
 	printf("Number of allocated blocks: %d\n", id->allocated_blocks);
 	printf("Number of malloc calls: %d\n", id->mallocs);
 	printf("Number of fragmentations: %d\n", id->fragmentations);
 	printf("Number of free calls: %d\n", id->frees);
 	for (int i = 0; i < v->nlists; ++i) {
-		printf("Blocks with %d bytes - %d free block(s) : ", v->list[i]->data_size, v->list[i]->size);
-		dll_node_t *node = v->list[i]->head;
-		for (int j = 0; j < v->list[i]->size && node; ++j) {
-			printf("0x%lx ", ((info_node*)node->data)->address);
-			node = node->next;
+		if (v->list[i]->size) {
+			printf("Blocks with %d bytes - %d free block(s) : ", v->list[i]->data_size, v->list[i]->size);
+			dll_node_t *node = v->list[i]->head;
+			for (int j = 0; j < v->list[i]->size && node; ++j) {
+				printf("0x%lx ", ((info_node*)node->data)->address);
+				node = node->next;
+			}
+			printf("\n");
 		}
-		printf("\n");
 	}
 	printf("Allocated blocks : ");
 	dll_node_t *node = w->list->head;
@@ -282,7 +288,7 @@ void my_read(mem_t *w, size_t start_address, size_t bytes, sfl_t *v, info_dump *
 			// se intinde pe mai multe noduri;
 			while (node->next &&  ((info_node *)node->next->data)->address == date->address + date->size) {
 				int i = 0;
-				for (i = 0; i < date->size; ++i) {
+				for (; i < date->size; ++i) {
 					output[j] = *((char *)(date->data) + i);
 					++j;
 				}
@@ -299,7 +305,7 @@ void my_read(mem_t *w, size_t start_address, size_t bytes, sfl_t *v, info_dump *
 			if (!ok && bytes <= date->bytes && date->address == ((info_node *)node->prev->data)->address + ((info_node *)node->prev->data)->size) {
 				int i = 0;
 				// dupa \0 se opreste
-				for (i = 0; i < bytes && *((char *)(date->data) + i - 1) != '\0'; ++i) {
+				for (i = 0; i < bytes; ++i) {
 					output[j] = *((char *)(date->data) + i);
 					++j;
 				}
@@ -351,18 +357,19 @@ void my_read(mem_t *w, size_t start_address, size_t bytes, sfl_t *v, info_dump *
 	free(output);
 }
 
-void my_write(mem_t *w, size_t start_address, char *string, size_t bytes)
+void my_write(mem_t *w, size_t start_address, char *string, int bytes, sfl_t *v, info_dump *id)
 {
 	dll_node_t *node = w->list->head;
 	int ok = 0;
 	int j = 0;
-	if (strlen(string) > bytes)
+	if (strlen(string) < bytes)
 		bytes = strlen(string);
-
+	
 	while (node) {
 		// printf("%ld %d %ld\n",((info_node *)node->data)->address, ((info_node *)node->data)->size, start_address);
 		if (((info_node *)node->data)->address == start_address && ((info_node *)node->data)->size >= bytes) {
 			int i = 0;
+
 			for (i = 0; i < bytes; ++i)
 				*((char *)(((info_node *)node->data)->data ) + i) = string[i];
 			ok = 1;
@@ -380,8 +387,9 @@ void my_write(mem_t *w, size_t start_address, char *string, size_t bytes)
 				}
 				node = node->next;
 			}
-			if (!ok && ((info_node *)node->data)->address == ((info_node *)node->prev->data)->address + ((info_node *)node->prev->data)->size) {
+			if (!ok && node->prev && ((info_node *)node->data)->address == ((info_node *)node->prev->data)->address + ((info_node *)node->prev->data)->size) {
 				bytes -= ((info_node *)node->data)->size;
+				// printf("%d\n", bytes);
 				if (bytes <= 0)
 					ok = 1;
 			}
@@ -391,21 +399,24 @@ void my_write(mem_t *w, size_t start_address, char *string, size_t bytes)
 				int verif = 0;
 				while (node->next && ((info_node *)node->next->data)->address == ((info_node *)node->data)->address + ((info_node *)node->data)->size) {
 					int i = 0;
-					for (i = 0; i < ((info_node *)node->data)->size; ++i) {
+					for (; i < ((info_node *)node->data)->size && bytes; ++i) {
 						*((char *)(((info_node *)node->data)->data ) + i) = string[j++];
 						((info_node *)node->data)->bytes++;
+						bytes--;
 					}
-					bytes -= i;
+					// bytes -= i;
+					
 					node = node->next;
 					if (bytes <= 0) {
 						verif = 1;
 						break;
 					}
 				}
-				if (!verif && ((info_node *)node->data)->address == ((info_node *)node->prev->data)->address + ((info_node *)node->prev->data)->size) {
+				// printf("hahaha2\n");
+				if (!verif && node->prev && ((info_node *)node->data)->address == ((info_node *)node->prev->data)->address + ((info_node *)node->prev->data)->size) {
 					int i = 0;
 					for (i = 0; i < bytes; ++i) {
-						*((char *)(((info_node *)node->data)->data ) + i) = string[j++];
+						*((char *)(((info_node *)node->data)->data) + i) = string[j++];
 						((info_node *)node->data)->bytes++;
 					}
 					bytes -= i;
@@ -415,6 +426,12 @@ void my_write(mem_t *w, size_t start_address, char *string, size_t bytes)
 		} else if (((info_node *)node->data)->address > start_address) break;
 		if (ok) break;
 		node = node->next;
+	}
+
+	if (!ok) {
+		printf("Segmentation fault (core dumped)\n");
+		dump_memory(v, w, id);
+		exit(-1);
 	}
 }
 
@@ -454,12 +471,18 @@ int main(void)
 				i++;
 			}
 			scanf("%d", &nbytes);
-			my_write(w, heapbase, writer, nbytes);
+			my_write(w, heapbase, writer, nbytes, v, id);
 		} else if (!strcmp(buffer, "DUMP_MEMORY")) {
 			dump_memory(v, w, id);
 		} else if (!strcmp(buffer, "DESTROY_HEAP")) {
 			// free
-
+			dll_free(&w->list);
+			free(w);
+			for (int i = 0; i < v->nlists; ++i) {
+				dll_free(&v->list[i]);
+			}
+			free(v->list);
+			free(v);
 			ok = 0;
 		}
 	}
