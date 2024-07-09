@@ -264,7 +264,7 @@ void dump_memory(sfl_t *v, mem_t *w, info_dump *id)
 	printf("-----DUMP-----\n");
 }
 
-void my_read(mem_t *w, size_t start_address, size_t bytes)
+void my_read(mem_t *w, size_t start_address, size_t bytes, sfl_t *v, info_dump *id)
 {
 	dll_node_t *node = w->list->head;
 	char *output = calloc(bytes + 1, sizeof(char));
@@ -274,8 +274,9 @@ void my_read(mem_t *w, size_t start_address, size_t bytes)
 		info_node *date = ((info_node *)node->data);
 		if (date->address == start_address && date->size >= bytes) {
 			for (int i = 0; i < bytes; ++i)
-				printf("%c", *((char *)(((info_node *)node->data)->data) + i));
-			printf("\n");
+				// printf("%c", *((char *)(((info_node *)node->data)->data) + i));
+				output[i] = *((char *)(((info_node *)node->data)->data) + i);
+			// printf("\n");
 			ok = 1;
 		} else if (date->address == start_address) {
 			// se intinde pe mai multe noduri;
@@ -294,9 +295,11 @@ void my_read(mem_t *w, size_t start_address, size_t bytes)
 				node = node->next;
 				date = ((info_node *)node->data);
 			}
+			// inca mai are de citit bytes din ultimul nod
 			if (!ok && bytes <= date->bytes && date->address == ((info_node *)node->prev->data)->address + ((info_node *)node->prev->data)->size) {
 				int i = 0;
-				for (i = 0; i < bytes; ++i) {
+				// dupa \0 se opreste
+				for (i = 0; i < bytes && *((char *)(date->data) + i - 1) != '\0'; ++i) {
 					output[j] = *((char *)(date->data) + i);
 					++j;
 				}
@@ -305,6 +308,35 @@ void my_read(mem_t *w, size_t start_address, size_t bytes)
 					ok = 1; 
 				}
 			}
+			// In mijlocul nodului
+		} else if (date->address < start_address && date->address + date->size - 1 >= start_address) {
+			int i = start_address - date->address;
+			while (node->next &&  ((info_node *)node->next->data)->address == date->address + date->size) {
+				for (; i < date->size && bytes; ++i) {
+					output[j] = *((char *)(date->data) + i);
+					++j;
+					bytes--;
+				}
+				if (bytes <= 0) {
+					ok = 1; 
+					break;
+				}
+				i = 0;
+				node = node->next;
+				date = ((info_node *)node->data);
+			}
+			// inca mai are de citit bytes din ultimul nod
+			if (!ok && bytes <= date->bytes && date->address + date->size - 1 >= start_address) {
+				// dupa \0 se opreste
+				for (i; bytes && i + bytes < date->bytes; ++i) {
+					output[j] = *((char *)(date->data) + i);
+					++j;
+					bytes--;
+				}
+				// printf("%d\n", bytes);
+				if (bytes == 0)
+					ok = 1; 
+			}
 		}
 		if (ok) break;
 		node = node->next;
@@ -312,9 +344,9 @@ void my_read(mem_t *w, size_t start_address, size_t bytes)
 	if (ok) {
 		printf("%s\n", output);
 	} else {
-		// printf("Segmentation fault\n");
-		// // dump_memory()
-		// exit(-1);
+		printf("Segmentation fault (core dumped)\n");
+		dump_memory(v, w, id);
+		exit(-1);
 	}
 	free(output);
 }
@@ -328,7 +360,7 @@ void my_write(mem_t *w, size_t start_address, char *string, size_t bytes)
 		bytes = strlen(string);
 
 	while (node) {
-		printf("%ld %d %ld\n",((info_node *)node->data)->address, ((info_node *)node->data)->size, start_address);
+		// printf("%ld %d %ld\n",((info_node *)node->data)->address, ((info_node *)node->data)->size, start_address);
 		if (((info_node *)node->data)->address == start_address && ((info_node *)node->data)->size >= bytes) {
 			int i = 0;
 			for (i = 0; i < bytes; ++i)
@@ -407,9 +439,8 @@ int main(void)
 			my_free(&w, &v, id, heapbase);
 		} else if (!strcmp(buffer, "READ")) {
 			scanf("%x %d", &heapbase, &nbytes);
-			my_read(w, heapbase, nbytes);
+			my_read(w, heapbase, nbytes, v, id);
 		} else if (!strcmp(buffer, "WRITE")) {
-			// WRITE 0x111 "GIGEL" 5
 			char writer[100];
 			scanf("%x", &heapbase);
 			scanf("%*c%*c");
