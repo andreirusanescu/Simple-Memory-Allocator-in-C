@@ -50,9 +50,9 @@ typedef struct {
 
 doubly_linked_list_t* dll_create(unsigned int data_size)
 {
-	doubly_linked_list_t *ll = malloc(sizeof(doubly_linked_list_t));
+	doubly_linked_list_t *ll = calloc(1, sizeof(doubly_linked_list_t));
 	if (!ll) {
-		fprintf(stderr, "malloc() failed\n");
+		fprintf(stderr, "calloc() failed\n");
 		return NULL;
 	}
 	ll->head = NULL;
@@ -74,7 +74,7 @@ dll_node_t* dll_get_nth_node(doubly_linked_list_t* list, unsigned int n)
 }
 
 // a fost scos parametrul void *data;
-void dll_add_nth_node(doubly_linked_list_t *list, unsigned int n, size_t address)
+void dll_add_nth_node(doubly_linked_list_t *list, int n, size_t address)
 {
 	if (!list || n < 0)
         return;
@@ -148,16 +148,16 @@ void add_in_order(doubly_linked_list_t *list, size_t address, size_t bytes)
 {
 	if (!list)
 		return;
-	dll_node_t *elem = malloc(sizeof(dll_node_t));
+	dll_node_t *elem = calloc(1, sizeof(dll_node_t));
 	if (!elem) {
-		fprintf(stderr, "malloc() failed\n");
+		fprintf(stderr, "calloc() failed\n");
 		return;
 	}
-	elem->data = malloc(sizeof(info_node));
+	elem->data = calloc(1, sizeof(info_node));
 	info_node *node = elem->data;
 	node->address = address;
 	node->fragment = 0;
-	node->data = malloc(bytes);
+	node->data = calloc(1, bytes);
 	node->size = bytes;
 	if (!list->size) {
 		// lista e goala
@@ -271,6 +271,8 @@ void dll_free(doubly_linked_list_t **list)
 	}
 	while ((*list)->size) {
 		dll_node_t *elem = dll_remove_nth_node(*list, 0);
+		free(((info_node *)elem->data)->data);
+		free(elem->data);
 		free(elem);
 	}
 	free(*list);

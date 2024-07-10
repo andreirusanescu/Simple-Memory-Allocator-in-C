@@ -41,27 +41,27 @@ void printaddress2(mem_t *v)
 // merge bine functia asta
 void initheap(sfl_t **v, mem_t **w, info_dump *id, size_t heapbase, int nlists, int bytes, int type_rec)
 {
-	*v = (sfl_t *)malloc(sizeof(sfl_t));
+	*v = (sfl_t *)calloc(1, sizeof(sfl_t));
 	if (!*v) {
-		fprintf(stderr, "malloc() failed\n");
+		fprintf(stderr, "calloc() failed\n");
 		return;
 	}
-	(*v)->list = (doubly_linked_list_t **)malloc(nlists * sizeof(doubly_linked_list_t*));
+	(*v)->list = (doubly_linked_list_t **)calloc(nlists, sizeof(doubly_linked_list_t*));
 	if (!(*v)->list) {
-		fprintf(stderr, "malloc() failed\n");
+		fprintf(stderr, "calloc() failed\n");
 		free(*v);
 		return;
 	}
-	*w = (mem_t *)malloc(sizeof(mem_t));
+	*w = (mem_t *)calloc(1, sizeof(mem_t));
 	if (!*w) {
-		fprintf(stderr, "malloc() failed\n");
+		fprintf(stderr, "calloc() failed\n");
 		free((*v)->list);
 		free(*v);
 		return;
 	}
-	(*w)->list = (doubly_linked_list_t *)malloc(nlists * sizeof(doubly_linked_list_t));
+	(*w)->list = (doubly_linked_list_t *)calloc(nlists, sizeof(doubly_linked_list_t));
 	if (!(*w)->list) {
-		fprintf(stderr, "malloc() failed\n");
+		fprintf(stderr, "calloc() failed\n");
 		free((*v)->list);
 		free(*v);
 		free(*w);
@@ -137,7 +137,7 @@ void parse_lists(sfl_t **v, size_t dim_free, size_t rest_address)
 	}
 }
 
-// w are aceeasi structura cu segregated asta dar fac listele pe parcurs si dimensiunile o sa fie tot pe un rand, fix cat are primul nod din lista respectiva;
+// are memory leak uri functia asta !!!
 void my_malloc(mem_t **w, sfl_t **v, info_dump *id, int bytes)
 {
 	if (!*v || !bytes)
@@ -173,11 +173,13 @@ void my_malloc(mem_t **w, sfl_t **v, info_dump *id, int bytes)
 		if (!(*v)->list[index]->size) {
 			for (int i = index; i < (*v)->nlists - 1; ++i)
 				(*v)->list[i] = (*v)->list[i + 1];
+			// free((*v)->list[(*v)->nlists - 1]);
 			(*v)->nlists--;
 			(*v)->list = (doubly_linked_list_t**)realloc((*v)->list, ((*v)->nlists) * sizeof(doubly_linked_list_t*));
 		}
 		add_in_order((*w)->list, ((info_node*)node->data)->address, bytes);
 		(*w)->nblocks++;
+		free(((info_node *)node->data)->data);
 		free(node->data);
 		free(node);
 	} else if (ok == 1) {
@@ -192,6 +194,7 @@ void my_malloc(mem_t **w, sfl_t **v, info_dump *id, int bytes)
 		parse_lists(v, dim_free, rest_address);
 		add_in_order((*w)->list, ((info_node*)node->data)->address, bytes);
 		(*w)->nblocks++;
+		free(((info_node *)node->data)->data);
 		free(node->data);
 		free(node);
 	}
@@ -199,10 +202,6 @@ void my_malloc(mem_t **w, sfl_t **v, info_dump *id, int bytes)
 	id->allocated_memory += bytes;
 	id->free_mem -= bytes;
 	id->allocated_blocks++;
-	// printf("Lista goala:\n");
-	// printaddress(*v);
-	// printf("Lista ocupata\n");
-	// printaddress2(*w);
 }
 
 void my_free(mem_t **w, sfl_t **v, info_dump *id, size_t address)
@@ -221,6 +220,7 @@ void my_free(mem_t **w, sfl_t **v, info_dump *id, size_t address)
 			parse_lists(v, ((info_node *)aux->data)->size, ((info_node *)aux->data)->address);
 			id->allocated_memory -= ((info_node *)aux->data)->size;
 			id->free_mem += ((info_node *)aux->data)->size;
+			free(((info_node*)aux->data)->data);
 			free(aux->data);
 			free(aux);
 			ok = 1;
@@ -231,7 +231,6 @@ void my_free(mem_t **w, sfl_t **v, info_dump *id, size_t address)
 		node = node->next;
 		++i;
 	}
-	// printaddress2(*w);
 	if (!ok)
 		printf("Invalid free\n");
 	else id->frees++;
@@ -352,7 +351,7 @@ void my_read(mem_t *w, size_t start_address, size_t bytes, sfl_t *v, info_dump *
 	} else {
 		printf("Segmentation fault (core dumped)\n");
 		dump_memory(v, w, id);
-		exit(-1);
+		// exit(-1);
 	}
 	free(output);
 }
@@ -371,7 +370,7 @@ void my_write(mem_t *w, size_t start_address, char *string, int bytes, sfl_t *v,
 			int i = 0;
 
 			for (i = 0; i < bytes; ++i)
-				*((char *)(((info_node *)node->data)->data ) + i) = string[i];
+				*((char *)(((info_node *)node->data)->data) + i) = string[i];
 			ok = 1;
 			((info_node *)node->data)->bytes = bytes;
 
@@ -404,15 +403,12 @@ void my_write(mem_t *w, size_t start_address, char *string, int bytes, sfl_t *v,
 						((info_node *)node->data)->bytes++;
 						bytes--;
 					}
-					// bytes -= i;
-					
 					node = node->next;
 					if (bytes <= 0) {
 						verif = 1;
 						break;
 					}
 				}
-				// printf("hahaha2\n");
 				if (!verif && node->prev && ((info_node *)node->data)->address == ((info_node *)node->prev->data)->address + ((info_node *)node->prev->data)->size) {
 					int i = 0;
 					for (i = 0; i < bytes; ++i) {
@@ -483,6 +479,7 @@ int main(void)
 			}
 			free(v->list);
 			free(v);
+			free(id);
 			ok = 0;
 		}
 	}
