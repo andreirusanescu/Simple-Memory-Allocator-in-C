@@ -48,7 +48,7 @@ typedef struct {
 	doubly_linked_list_t *list;
 } mem_t;
 
-doubly_linked_list_t* dll_create(unsigned int data_size)
+doubly_linked_list_t *dll_create(unsigned int data_size)
 {
 	doubly_linked_list_t *ll = calloc(1, sizeof(doubly_linked_list_t));
 	if (!ll) {
@@ -62,7 +62,7 @@ doubly_linked_list_t* dll_create(unsigned int data_size)
 	return ll;
 }
 
-dll_node_t* dll_get_nth_node(doubly_linked_list_t* list, unsigned int n)
+dll_node_t *dll_get_nth_node(doubly_linked_list_t* list, int n)
 {
 	if (!list || !list->head || n < 0)
 		return NULL;
@@ -71,77 +71,6 @@ dll_node_t* dll_get_nth_node(doubly_linked_list_t* list, unsigned int n)
 	for (int i = 0; i < n; ++i)
 		node = node->next;
 	return node;
-}
-
-// a fost scos parametrul void *data;
-void dll_add_nth_node(doubly_linked_list_t *list, int n, size_t address)
-{
-	if (!list || n < 0)
-        return;
-    if (n > list->size)
-        n = list->size;
-	dll_node_t *elem = malloc(sizeof(dll_node_t));
-	if (!elem) {
-		fprintf(stderr, "malloc() failed\n");
-		return;
-	}
-	// elem->data = malloc(sizeof(list->data_size));
-	// elem->address = address;
-	elem->data = malloc(sizeof(info_node));
-	info_node *node = elem->data;
-	node->address = address;
-	node->fragment = 0;
-	// este doar fictiva alocarea asta
-	// node->data = malloc(list->data_size);
-	if (n == 0) {
-		if (!list->size) {
-			// lista e goala
-			list->head = elem;
-			list->tail = elem;
-			list->head->next = NULL;
-			list->tail->prev = NULL;
-			list->head->prev = NULL;
-			list->tail->next = NULL;
-			list->size++;
-		} else {
-			// am elemente in lista;
-			elem->next = list->head;
-			elem->prev = NULL;
-			list->head->prev = elem;
-			list->head = elem;
-			list->size++;
-		}
-	} else if (n == list->size) {
-		// adaug la final;
-		elem->next = NULL;
-		elem->prev = list->tail;
-		list->tail->next = elem;
-		list->tail = elem;
-		list->size++;
-	} else {
-		// adaug la mijloc
-		if (n > list->size / 2) {
-			// parcurg de la final;
-			dll_node_t* p = list->tail;
-			for (int i = list->size - 1; i >= n; --i)
-				p = p->prev;
-			elem->next = p;
-			elem->prev = p->prev;
-			p->prev->next = elem;
-			p->prev = elem;
-			list->size++;
-		} else {
-			// parcurg de la inceput;
-			dll_node_t* p = list->head;
-			for (int i = 0; i < n - 1; ++i)
-				p = p->next;
-			elem->prev = p;
-			elem->next = p->next;
-			p->next->prev = elem;
-			p->next = elem;
-			list->size++;
-		}
-	}
 }
 
 void add_in_order(doubly_linked_list_t *list, size_t address, size_t bytes)
@@ -200,9 +129,9 @@ void add_in_order(doubly_linked_list_t *list, size_t address, size_t bytes)
 }
 
 // sterge nodul de pe pozitia n si il intoarce
-dll_node_t* dll_remove_nth_node(doubly_linked_list_t *list, unsigned int n)
+dll_node_t *dll_remove_nth_node(doubly_linked_list_t *list, int n)
 {
-	if (!list || n < 0 || n > list->size || list->size == 0)
+	if (!list || n < 0 || (unsigned int)n > list->size || list->size == 0)
 		return NULL;
 	if (!n) {
 		// scot headul;
@@ -221,7 +150,7 @@ dll_node_t* dll_remove_nth_node(doubly_linked_list_t *list, unsigned int n)
 			list->size--;
 			return aux;
 		}
-	} else if (n == list->size - 1) {
+	} else if ((unsigned int)n == list->size - 1) {
 		// scot tailul;
 		if (list->size == 1) {
 			dll_node_t *aux = list->head;
@@ -238,10 +167,10 @@ dll_node_t* dll_remove_nth_node(doubly_linked_list_t *list, unsigned int n)
 		}
 	} else {
 		// scot de la mijloc;
-		if (n > list->size / 2) {
+		if ((unsigned int)n > list->size / 2) {
 			// parcurg de la final;
 			dll_node_t* p = list->tail;
-			for (int i = list->size - 1; i > n && p; --i)
+			for (int i = list->size - 1; i > n + 1 && p; --i)
 				p = p->prev;
 			dll_node_t *aux = p->prev;
 			p->prev = aux->prev;
