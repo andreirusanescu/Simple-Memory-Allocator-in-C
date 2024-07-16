@@ -1,7 +1,7 @@
 #include <stddef.h>
 #include <stdio.h>
 
-#define MAX_LEN 600
+#define MAX_LEN 200
 
 typedef struct info_dump {
 	int total_memory;
@@ -14,43 +14,42 @@ typedef struct info_dump {
 	int frees;
 } info_dump;
 
-typedef struct info_node {
-	size_t address;
+typedef struct info {
+	size_t addy;
 	int fragment;
 	int size;
 	int bytes;
 	void *data;		// actual data of the node;
-} info_node;
+} info;
 
 typedef struct dll_node_t {
 	void *data;
-	struct dll_node_t* next;
-	struct dll_node_t* prev;
+	struct dll_node_t *next;
+	struct dll_node_t *prev;
 } dll_node_t;
 
 typedef struct {
-	// size_t address; // adresa headului practic;
-	dll_node_t* head;
-	dll_node_t* tail;
-	unsigned int data_size; // marimea tipului de date din lista;
-	unsigned int size; // marimea listei;
-} doubly_linked_list_t;
+	dll_node_t *head;
+	dll_node_t *tail;
+	unsigned int data_size;
+	unsigned int size; // length of list
+} dll_list_t;
 
 typedef struct {
 	int nlists;
-	int nbytes; // pe lista
+	int nbytes; // bytes per list
 	int type_rec;
-	doubly_linked_list_t **list;
+	dll_list_t **list;
 } sfl_t;
 
 typedef struct {
 	int nblocks;
-	doubly_linked_list_t *list;
+	dll_list_t *list;
 } mem_t;
 
-doubly_linked_list_t *dll_create(unsigned int data_size)
+dll_list_t *dll_create(unsigned int data_size)
 {
-	doubly_linked_list_t *ll = calloc(1, sizeof(doubly_linked_list_t));
+	dll_list_t *ll = calloc(1, sizeof(dll_list_t));
 	if (!ll) {
 		fprintf(stderr, "calloc() failed\n");
 		return NULL;
@@ -62,7 +61,7 @@ doubly_linked_list_t *dll_create(unsigned int data_size)
 	return ll;
 }
 
-dll_node_t *dll_get_nth_node(doubly_linked_list_t* list, int n)
+dll_node_t *dll_get_nth_node(dll_list_t *list, int n)
 {
 	if (!list || !list->head || n < 0)
 		return NULL;
@@ -73,7 +72,7 @@ dll_node_t *dll_get_nth_node(doubly_linked_list_t* list, int n)
 	return node;
 }
 
-void add_in_order(doubly_linked_list_t *list, size_t address, size_t bytes)
+void add_in_order(dll_list_t *list, size_t addy, size_t bytes)
 {
 	if (!list)
 		return;
@@ -82,14 +81,14 @@ void add_in_order(doubly_linked_list_t *list, size_t address, size_t bytes)
 		fprintf(stderr, "calloc() failed\n");
 		return;
 	}
-	elem->data = calloc(1, sizeof(info_node));
-	info_node *node = elem->data;
-	node->address = address;
+	elem->data = calloc(1, sizeof(info));
+	info *node = elem->data;
+	node->addy = addy;
 	node->fragment = 0;
 	node->data = calloc(1, bytes);
 	node->size = bytes;
 	if (!list->size) {
-		// lista e goala
+		// list empty
 		list->head = elem;
 		list->tail = elem;
 		list->head->next = NULL;
@@ -99,7 +98,7 @@ void add_in_order(doubly_linked_list_t *list, size_t address, size_t bytes)
 		list->size++;
 	} else {
 		dll_node_t *p = list->head;
-		if (((info_node *)list->head->data)->address > ((info_node *)elem->data)->address) {
+		if (((info *)list->head->data)->addy > ((info *)elem->data)->addy) {
 			elem->prev = NULL;
 			elem->next = list->head;
 			list->head->prev = elem;
@@ -109,8 +108,8 @@ void add_in_order(doubly_linked_list_t *list, size_t address, size_t bytes)
 		}
 
 		while (p->next) {
-			if ((((info_node *)p->data)->address <= address) && (((info_node *)p->next->data)->address >= address)) {
-				// inserez aici;
+			if ((((info *)p->data)->addy <= addy) &&
+				(((info *)p->next->data)->addy >= addy)) {
 				elem->next = p->next;
 				elem->prev = p;
 				p->next->prev = elem;
@@ -128,71 +127,62 @@ void add_in_order(doubly_linked_list_t *list, size_t address, size_t bytes)
 	}
 }
 
-// sterge nodul de pe pozitia n si il intoarce
-dll_node_t *dll_remove_nth_node(doubly_linked_list_t *list, int n)
+dll_node_t *dll_remove_nth_node(dll_list_t *list, int n)
 {
 	if (!list || n < 0 || (unsigned int)n > list->size || list->size == 0)
 		return NULL;
 	if (!n) {
-		// scot headul;
+		// remove head
 		if (list->size == 1) {
-			// head = tail, practic sterg headul si tailul;
+			// head = tail
 			dll_node_t *aux = list->head;
 			list->head = NULL;
 			list->tail = NULL;
 			list->size--;
 			return aux;
-		} else {
-			// lista nu e goala;
-			dll_node_t* aux = list->head;
-			list->head = list->head->next;
-			list->head->prev = NULL;
-			list->size--;
-			return aux;
 		}
+		// list not empty
+		dll_node_t *aux = list->head;
+		list->head = list->head->next;
+		list->head->prev = NULL;
+		list->size--;
+		return aux;
 	} else if ((unsigned int)n == list->size - 1) {
-		// scot tailul;
+		// remove tailul;
 		if (list->size == 1) {
 			dll_node_t *aux = list->head;
 			list->head = NULL;
 			list->tail = NULL;
 			list->size--;
 			return aux;
-		} else {
-			dll_node_t *aux = list->tail;
-			list->tail = list->tail->prev;
-			list->tail->next = NULL;
-			list->size--;
-			return aux;
 		}
-	} else {
-		// scot de la mijloc;
-		if ((unsigned int)n > list->size / 2) {
-			// parcurg de la final;
-			dll_node_t* p = list->tail;
-			for (int i = list->size - 1; i > n + 1 && p; --i)
-				p = p->prev;
-			dll_node_t *aux = p->prev;
-			p->prev = aux->prev;
-			aux->prev->next = p;
-			list->size--;
-			return aux;
-		} else {
-			// parcurg de la inceput;
-			dll_node_t* p = list->head;
-			for (int i = 0; i < n - 1 && p; ++i)
-				p = p->next;
-			dll_node_t* aux = p->next;
-			p->next = aux->next;
-			aux->next->prev = p;
-			list->size--;
-			return aux;
-		}
+		dll_node_t *aux = list->tail;
+		list->tail = list->tail->prev;
+		list->tail->next = NULL;
+		list->size--;
+		return aux;
 	}
-	return NULL;
+	if ((unsigned int)n > (list->size >> 1)) {
+		dll_node_t *p = list->tail;
+		for (int i = list->size - 1; i > n + 1 && p; --i)
+			p = p->prev;
+		dll_node_t *aux = p->prev;
+		p->prev = aux->prev;
+		aux->prev->next = p;
+		list->size--;
+		return aux;
+	}
+	dll_node_t *p = list->head;
+	for (int i = 0; i < n - 1 && p; ++i)
+		p = p->next;
+	dll_node_t *aux = p->next;
+	p->next = aux->next;
+	aux->next->prev = p;
+	list->size--;
+	return aux;
 }
 
-void dll_free(doubly_linked_list_t **list)
+void dll_free(dll_list_t **list)
 {
 	if (!list || !*list) {
 		fprintf(stderr, "List is empty\n");
@@ -200,7 +190,7 @@ void dll_free(doubly_linked_list_t **list)
 	}
 	while ((*list)->size) {
 		dll_node_t *elem = dll_remove_nth_node(*list, 0);
-		free(((info_node *)elem->data)->data);
+		free(((info *)elem->data)->data);
 		free(elem->data);
 		free(elem);
 	}

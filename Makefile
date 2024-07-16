@@ -7,7 +7,7 @@ TARGETS = sfl
 
 build: $(TARGETS)
 
-sfl: tema1CA.c
+sfl: sfl.c
 	$(CC) $(CFLAGS) -o $@ $<
 
 
