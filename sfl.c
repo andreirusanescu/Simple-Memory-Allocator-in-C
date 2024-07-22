@@ -49,7 +49,7 @@ void initheap(sfl_t **v, mem_t **w, info_dump *id, size_t heapbase,
 		size_t node_bytes = bytes / (bytes / (1 << (i + 3)));
 		for (int j = 0; j < bytes / (1 << (i + 3)); ++j) {
 			node_addy = addy + j * node_bytes;
-			add_in_order((*v)->list[i], node_addy, node_bytes);
+			add_in_order((*v)->list[i], node_addy, node_bytes, 0, node_bytes);
 			id->free_blocks++;
 		}
 	}
@@ -89,11 +89,12 @@ void sort_lists(sfl_t *v, int l, int r)
 	sort_lists(v, i + 1, r);
 }
 
-void parse_lists(sfl_t **v, size_t dim_free, size_t rest_addy)
+void parse_lists(sfl_t **v, size_t dim_free, size_t rest_addy, int frag,
+				 int ogsize)
 {
 	for (int i = 0; i < (*v)->nlists; ++i) {
 		if ((*v)->list[i]->data_size == dim_free) {
-			add_in_order((*v)->list[i], rest_addy, dim_free);
+			add_in_order((*v)->list[i], rest_addy, dim_free, frag, ogsize);
 			break;
 		} else if ((*v)->list[i]->data_size > dim_free) {
 			(*v)->list = (dll_list_t **)realloc((*v)->list,
@@ -107,7 +108,8 @@ void parse_lists(sfl_t **v, size_t dim_free, size_t rest_addy)
 			(*v)->list[(*v)->nlists - 1] = dll_create(dim_free);
 			(*v)->list[(*v)->nlists - 1]->data_size = dim_free;
 			// add in last list
-			add_in_order((*v)->list[(*v)->nlists - 1], rest_addy, dim_free);
+			add_in_order((*v)->list[(*v)->nlists - 1], rest_addy,
+						 dim_free, frag, ogsize);
 			// sort by data_size
 			sort_lists((*v), 0, (*v)->nlists - 1);
 			break;
@@ -145,7 +147,9 @@ void my_malloc(mem_t **w, sfl_t **v, info_dump *id, unsigned int bytes)
 		// no fragmentation
 		id->free_blocks--;
 		dll_node_t *node = dll_remove_nth_node((*v)->list[index], 0);
-		add_in_order((*w)->list, ((info *)node->data)->addy, bytes);
+		add_in_order((*w)->list, ((info *)node->data)->addy, bytes,
+					 ((info *)node->data)->fragment,
+					 ((info *)node->data)->ogsize);
 		(*w)->nblocks++;
 		free(((info *)node->data)->data);
 		free(node->data);
@@ -153,15 +157,13 @@ void my_malloc(mem_t **w, sfl_t **v, info_dump *id, unsigned int bytes)
 	} else if (ok == 1) {
 		id->fragmentations++;
 		size_t dim_free = (*v)->list[index]->data_size - bytes;
-		// trebuie sa aloc un bloc de memorie de fix bytes, si unul de
-		// dim bytes si pe ala de dim bytes sa il bag in vectorul de
-		// liste unde trebuie; pe ala de dim bytes il adaug in lista mea
-		// trebuie sa cresc fragmentarea la noduri;
 		dll_node_t *node = dll_remove_nth_node((*v)->list[index], 0);
 		size_t rest_addy = ((info *)node->data)->addy + bytes;
-
-		parse_lists(v, dim_free, rest_addy);
-		add_in_order((*w)->list, ((info *)node->data)->addy, bytes);
+		parse_lists(v, dim_free, rest_addy, ((info *)node->data)->fragment + 1,
+					((info *)node->data)->ogsize);
+		add_in_order((*w)->list, ((info *)node->data)->addy, bytes,
+					 ((info *)node->data)->fragment + 1,
+					 ((info *)node->data)->ogsize);
 		(*w)->nblocks++;
 		free(((info *)node->data)->data);
 		free(node->data);
@@ -171,6 +173,99 @@ void my_malloc(mem_t **w, sfl_t **v, info_dump *id, unsigned int bytes)
 	id->allocated_memory += bytes;
 	id->free_mem -= bytes;
 	id->allocated_blocks++;
+}
+
+int get_max(int a, int b)
+{
+	return a > b ? a : b;
+}
+
+void parse(sfl_t **v, size_t addy, size_t size, info_dump *id, int frag,
+		   int ogsize)
+{
+	int ok = 0;	// flag care imi spune cand sa opresc cautarea;
+	for (int i = 0; i < (*v)->nlists; ++i) {
+		// TODO: fac o regula sa nu parcurg toate listele
+		dll_node_t *aux = (*v)->list[i]->head;
+		for (int j = 0; aux; ++j, aux = aux->next) {
+			if (addy + size == ((info *)aux->data)->addy) {
+				if (!frag || !(((info *)aux->data)->fragment)) {
+					continue;
+				} else if (((info *)aux->data)->ogsize ==
+						   ((info *)aux->data)->size) {
+					((info *)aux->data)->fragment = 0;
+					continue;
+				}
+				dll_node_t *node = dll_remove_nth_node((*v)->list[i], j);
+				size = size + ((info *)node->data)->size;
+				ok = 1;
+				free(((info *)node->data)->data);
+				free(node->data);
+				free(node);
+				break;
+			} else if (((info *)aux->data)->addy +
+					   ((size_t)((info *)aux->data)->size) == addy) {
+				if (!frag || !(((info *)aux->data)->fragment)) {
+					continue;
+				} else if (((info *)aux->data)->ogsize ==
+						   ((info *)aux->data)->size) {
+					((info *)aux->data)->fragment = 0;
+					continue;
+				}
+				dll_node_t *node = dll_remove_nth_node((*v)->list[i], j);
+				size = size + ((info *)node->data)->size;
+				ok = 1;
+				addy = ((info *)aux->data)->addy;
+				frag = get_max(((info *)aux->data)->fragment, frag);
+				free(((info *)node->data)->data);
+				free(node->data);
+				free(node);
+				break;
+			}
+		}
+		if (ok)
+			break;
+	}
+	if (!ok) {
+		// nu s a gasit niciun nod => fac parse_lists clasic
+		parse_lists(v, size, addy, frag, ogsize);
+		return;
+	}
+	id->free_blocks--;
+	parse(v, addy, size, id, frag - 1, ogsize);
+}
+
+void my_free1(mem_t **w, sfl_t **v, info_dump *id, size_t addy)
+{
+	if (addy == 0) {
+		id->frees++;
+		return;
+	}
+	int ok = 0;
+	dll_node_t *node = (*w)->list->head;
+	int i = 0;
+	while (node) {
+		if (((info *)node->data)->addy == addy) {
+			dll_node_t *aux = dll_remove_nth_node((*w)->list, i);
+			parse(v, ((info *)aux->data)->addy, ((info *)aux->data)->size, id,
+				  ((info *)aux->data)->fragment, ((info *)aux->data)->ogsize);
+			id->allocated_memory -= ((info *)aux->data)->size;
+			id->free_mem += ((info *)aux->data)->size;
+			free(((info *)aux->data)->data);
+			free(aux->data);
+			free(aux);
+			ok = 1;
+			id->allocated_blocks--;
+			id->free_blocks++;
+			break;
+		}
+		node = node->next;
+		++i;
+	}
+	if (!ok)
+		printf("Invalid free\n");
+	else
+		id->frees++;
 }
 
 void my_free(mem_t **w, sfl_t **v, info_dump *id, size_t addy)
@@ -186,7 +281,9 @@ void my_free(mem_t **w, sfl_t **v, info_dump *id, size_t addy)
 		if (((info *)node->data)->addy == addy) {
 			dll_node_t *aux = dll_remove_nth_node((*w)->list, i);
 			parse_lists(v, ((info *)aux->data)->size,
-						((info *)aux->data)->addy);
+						((info *)aux->data)->addy,
+						((info *)aux->data)->fragment,
+						((info *)aux->data)->ogsize);
 			id->allocated_memory -= ((info *)aux->data)->size;
 			id->free_mem += ((info *)aux->data)->size;
 			free(((info *)aux->data)->data);
@@ -426,7 +523,10 @@ int main(void)
 			my_malloc(&w, &v, id, nbytes);
 		} else if (!strcmp(buffer, "FREE")) {
 			scanf("%x", &heapbase);
-			my_free(&w, &v, id, heapbase);
+			if (!v->type_rec)
+				my_free(&w, &v, id, heapbase);
+			else
+				my_free1(&w, &v, id, heapbase);
 		} else if (!strcmp(buffer, "READ")) {
 			scanf("%x %d", &heapbase, &nbytes);
 			if (my_read(w, heapbase, nbytes, v, id) == -1)

@@ -18,8 +18,9 @@ typedef struct info {
 	size_t addy;
 	int fragment;
 	int size;
+	int ogsize;	// size of the original node
 	int bytes;
-	void *data;		// actual data of the node;
+	void *data;	// actual data of the node;
 } info;
 
 typedef struct dll_node_t {
@@ -72,7 +73,8 @@ dll_node_t *dll_get_nth_node(dll_list_t *list, int n)
 	return node;
 }
 
-void add_in_order(dll_list_t *list, size_t addy, size_t bytes)
+void add_in_order(dll_list_t *list, size_t addy, size_t bytes, int frag,
+				  int ogsize)
 {
 	if (!list)
 		return;
@@ -83,10 +85,12 @@ void add_in_order(dll_list_t *list, size_t addy, size_t bytes)
 	}
 	elem->data = calloc(1, sizeof(info));
 	info *node = elem->data;
+	node->ogsize = ogsize;
 	node->addy = addy;
 	node->fragment = 0;
 	node->data = calloc(1, bytes);
 	node->size = bytes;
+	node->fragment = frag;
 	if (!list->size) {
 		// list empty
 		list->head = elem;
