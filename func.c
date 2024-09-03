@@ -1,60 +1,16 @@
-#include <stddef.h>
+/*
+ * Copyright (c) 2024, Andrei Rusanescu <andreirusanescu154gmail.com>
+ */
+
 #include <stdio.h>
+#include <stdlib.h>
 
-#define MAX_LEN 200
+#include "dllfunc.h"
 
-typedef struct info_dump {
-	int total_memory;
-	int allocated_memory;
-	int free_mem;
-	int free_blocks;
-	int allocated_blocks;
-	int mallocs;
-	int fragmentations;
-	int frees;
-} info_dump;
-
-typedef struct info {
-	size_t addy;
-	int fragment;
-	int size;
-	int ogsize;	// size of the original node
-	int bytes;
-	void *data;	// actual data of the node;
-} info;
-
-typedef struct dll_node_t {
-	void *data;
-	struct dll_node_t *next;
-	struct dll_node_t *prev;
-} dll_node_t;
-
-typedef struct {
-	dll_node_t *head;
-	dll_node_t *tail;
-	unsigned int data_size;
-	unsigned int size; // length of list
-} dll_list_t;
-
-typedef struct {
-	int nlists;
-	int nbytes; // bytes per list
-	int type_rec;
-	dll_list_t **list;
-} sfl_t;
-
-typedef struct {
-	int nblocks;
-	dll_list_t *list;
-} mem_t;
-
+/* Creates a doubly linked list of data_size elements */
 dll_list_t *dll_create(unsigned int data_size)
 {
 	dll_list_t *ll = calloc(1, sizeof(dll_list_t));
-	if (!ll) {
-		fprintf(stderr, "calloc() failed\n");
-		return NULL;
-	}
 	ll->head = NULL;
 	ll->tail = NULL;
 	ll->data_size = data_size;
@@ -62,6 +18,7 @@ dll_list_t *dll_create(unsigned int data_size)
 	return ll;
 }
 
+/* Returns the nth node in the list*/
 dll_node_t *dll_get_nth_node(dll_list_t *list, int n)
 {
 	if (!list || !list->head || n < 0)
@@ -73,16 +30,13 @@ dll_node_t *dll_get_nth_node(dll_list_t *list, int n)
 	return node;
 }
 
+/* Adds nodes in order */
 void add_in_order(dll_list_t *list, size_t addy, size_t bytes, int frag,
 				  int ogsize)
 {
 	if (!list)
 		return;
 	dll_node_t *elem = calloc(1, sizeof(dll_node_t));
-	if (!elem) {
-		fprintf(stderr, "calloc() failed\n");
-		return;
-	}
 	elem->data = calloc(1, sizeof(info));
 	info *node = elem->data;
 	node->ogsize = ogsize;
@@ -131,6 +85,7 @@ void add_in_order(dll_list_t *list, size_t addy, size_t bytes, int frag,
 	}
 }
 
+/* Removes and returns the nth node, free is done by the caller */
 dll_node_t *dll_remove_nth_node(dll_list_t *list, int n)
 {
 	if (!list || n < 0 || (unsigned int)n > list->size || list->size == 0)
@@ -152,7 +107,7 @@ dll_node_t *dll_remove_nth_node(dll_list_t *list, int n)
 		list->size--;
 		return aux;
 	} else if ((unsigned int)n == list->size - 1) {
-		// remove tailul;
+		// remove tail;
 		if (list->size == 1) {
 			dll_node_t *aux = list->head;
 			list->head = NULL;
@@ -186,6 +141,7 @@ dll_node_t *dll_remove_nth_node(dll_list_t *list, int n)
 	return aux;
 }
 
+/* Frees memory */
 void dll_free(dll_list_t **list)
 {
 	if (!list || !*list) {

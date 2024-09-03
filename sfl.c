@@ -1,50 +1,28 @@
+/*
+ * Copyright (c) 2024, Andrei Rusanescu <andreirusanescu154gmail.com>
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+
 #include "dllfunc.h"
 
+/* Initialises the heap */
 void initheap(sfl_t **v, mem_t **w, info_dump *id, size_t heapbase,
 			  int nlists, int bytes, int type_rec)
 {
 	*v = (sfl_t *)calloc(1, sizeof(sfl_t));
-	if (!*v) {
-		fprintf(stderr, "calloc() failed\n");
-		return;
-	}
 	(*v)->list = (dll_list_t **)calloc(nlists, sizeof(dll_list_t *));
-	if (!(*v)->list) {
-		fprintf(stderr, "calloc() failed\n");
-		free(*v);
-		return;
-	}
 	*w = (mem_t *)calloc(1, sizeof(mem_t));
-	if (!*w) {
-		fprintf(stderr, "calloc() failed\n");
-		free((*v)->list);
-		free(*v);
-		return;
-	}
 	(*w)->list = (dll_list_t *)calloc(nlists, sizeof(dll_list_t));
-	if (!(*w)->list) {
-		fprintf(stderr, "calloc() failed\n");
-		free((*v)->list);
-		free(*v);
-		free(*w);
-		return;
-	}
 	(*w)->nblocks = 0;
 	size_t addy = heapbase;
 	id->free_blocks = 0;
 	for (int i = 0; i < nlists; ++i) {
 		addy = heapbase + i * bytes;
 		(*v)->list[i] = dll_create(1 << (i + 3));
-		if (!(*v)->list[i]) {
-			fprintf(stderr, "malloc() failed\n");
-			for (int j = i - 1; j >= 0; --j)
-				free((*v)->list[i]);
-			free((*v)->list);
-			return;
-		}
+
 		size_t node_addy = addy;
 		size_t node_bytes = bytes / (bytes / (1 << (i + 3)));
 		for (int j = 0; j < bytes / (1 << (i + 3)); ++j) {
@@ -65,11 +43,12 @@ void initheap(sfl_t **v, mem_t **w, info_dump *id, size_t heapbase,
 	(*v)->type_rec = type_rec;
 }
 
+/* Quick sort */
 void sort_lists(sfl_t *v, int l, int r)
 {
 	if (l >= r)
 		return;
-	int mid = (l + r) / 2;
+	int mid = l + (r - l) / 2;
 	int piv = l + rand() % (r - l + 1);
 	dll_list_t *aux = v->list[piv];
 	v->list[piv] = v->list[mid];
@@ -89,6 +68,9 @@ void sort_lists(sfl_t *v, int l, int r)
 	sort_lists(v, i + 1, r);
 }
 
+/* Adds a block of memory of address rest_addy or a list if
+ * the corresponding data_size was not found
+ */
 void parse_lists(sfl_t **v, size_t dim_free, size_t rest_addy, int frag,
 				 int ogsize)
 {
@@ -99,11 +81,6 @@ void parse_lists(sfl_t **v, size_t dim_free, size_t rest_addy, int frag,
 		} else if ((*v)->list[i]->data_size > dim_free) {
 			(*v)->list = (dll_list_t **)realloc((*v)->list,
 						 ((*v)->nlists + 1) * sizeof(dll_list_t *));
-
-			if (!(*v)->list) {
-				fprintf(stderr, "Realloc() failed\n");
-				return;
-			}
 			(*v)->nlists++;
 			(*v)->list[(*v)->nlists - 1] = dll_create(dim_free);
 			(*v)->list[(*v)->nlists - 1]->data_size = dim_free;
@@ -117,6 +94,9 @@ void parse_lists(sfl_t **v, size_t dim_free, size_t rest_addy, int frag,
 	}
 }
 
+/* Allocates a block of `bytes` bytes from the sfl
+ * to the used memory struct
+ */
 void my_malloc(mem_t **w, sfl_t **v, info_dump *id, unsigned int bytes)
 {
 	if (!*v || !bytes)
@@ -175,17 +155,21 @@ void my_malloc(mem_t **w, sfl_t **v, info_dump *id, unsigned int bytes)
 	id->allocated_blocks++;
 }
 
+/* Returns the maximum value */
 int get_max(int a, int b)
 {
 	return a > b ? a : b;
 }
 
+/* Updated parse used when type_rec is set, looks for pairing nodes
+ * that originally were broken down into pieces from the same node
+ */
 void parse(sfl_t **v, size_t addy, size_t size, info_dump *id, int frag,
 		   int ogsize)
 {
-	int ok = 0;	// flag care imi spune cand sa opresc cautarea;
+	int ok = 0;	// flag that tells when to stop the searching
 	for (int i = 0; i < (*v)->nlists; ++i) {
-		// TODO: fac o regula sa nu parcurg toate listele
+		// TODO: rule for not looking through all the lists
 		dll_node_t *aux = (*v)->list[i]->head;
 		for (int j = 0; aux; ++j, aux = aux->next) {
 			if (addy + size == ((info *)aux->data)->addy) {
@@ -227,7 +211,7 @@ void parse(sfl_t **v, size_t addy, size_t size, info_dump *id, int frag,
 			break;
 	}
 	if (!ok) {
-		// nu s a gasit niciun nod => fac parse_lists clasic
+		// no pairing node was found
 		parse_lists(v, size, addy, frag, ogsize);
 		return;
 	}
@@ -235,6 +219,7 @@ void parse(sfl_t **v, size_t addy, size_t size, info_dump *id, int frag,
 	parse(v, addy, size, id, frag - 1, ogsize);
 }
 
+/* Used when type_rec is on */
 void my_free1(mem_t **w, sfl_t **v, info_dump *id, size_t addy)
 {
 	if (addy == 0) {
@@ -268,6 +253,7 @@ void my_free1(mem_t **w, sfl_t **v, info_dump *id, size_t addy)
 		id->frees++;
 }
 
+/* Frees a valid block of memory */
 void my_free(mem_t **w, sfl_t **v, info_dump *id, size_t addy)
 {
 	if (addy == 0) {
@@ -303,6 +289,7 @@ void my_free(mem_t **w, sfl_t **v, info_dump *id, size_t addy)
 		id->frees++;
 }
 
+/* Dumps stats about the memory used by the program */
 void dump_memory(sfl_t *v, mem_t *w, info_dump *id)
 {
 	printf("+++++DUMP+++++\n");
@@ -340,6 +327,9 @@ void dump_memory(sfl_t *v, mem_t *w, info_dump *id)
 	printf("-----DUMP-----\n");
 }
 
+/* Reads `bytes` bytes from start_addy, if any of the bytes in this
+ * interval were not priorly allocated, throws Segmenation fault and
+ * dumps core                                                     */
 int my_read(mem_t *w, size_t start_addy, int bytes, sfl_t *v, info_dump *id)
 {
 	int ret = 0, ok = 0, j = 0;
@@ -352,7 +342,7 @@ int my_read(mem_t *w, size_t start_addy, int bytes, sfl_t *v, info_dump *id)
 				output[i] = *((char *)(((info *)node->data)->data) + i);
 			ok = 1;
 		} else if (dt->addy == start_addy) {
-			// se intinde pe mai multe noduri;
+			// Read applied on many nodes
 			while (node->next &&  ((info *)node->next->data)->addy ==
 				   dt->addy + dt->size) {
 				int i = 0;
@@ -368,7 +358,7 @@ int my_read(mem_t *w, size_t start_addy, int bytes, sfl_t *v, info_dump *id)
 				node = node->next;
 				dt = ((info *)node->data);
 			}
-			// inca mai are de citit bytes din ultimul nod
+			// still reads bytes from the last node
 			if (!ok && bytes <= dt->bytes && dt->addy ==
 				((info *)node->prev->data)->addy +
 				((info *)node->prev->data)->size) {
@@ -381,7 +371,7 @@ int my_read(mem_t *w, size_t start_addy, int bytes, sfl_t *v, info_dump *id)
 				if (bytes <= 0)
 					ok = 1;
 			}
-			// In mijlocul nodului
+			// middle of the node reading
 		} else if (dt->addy < start_addy &&
 				   dt->addy + dt->size - 1 >= start_addy) {
 			int i = start_addy - dt->addy;
@@ -397,7 +387,7 @@ int my_read(mem_t *w, size_t start_addy, int bytes, sfl_t *v, info_dump *id)
 				node = node->next;
 				dt = ((info *)node->data);
 			}
-			// inca mai are de citit bytes din ultimul nod
+			// still reads bytes from last node
 			if (!ok && bytes <= dt->bytes &&
 				dt->addy + dt->size - 1 >= start_addy) {
 				int cpy = bytes;
@@ -423,6 +413,9 @@ int my_read(mem_t *w, size_t start_addy, int bytes, sfl_t *v, info_dump *id)
 	return ret;
 }
 
+/* Writes `bytes` bytes to start_addy, if any of the bytes in this
+ * interval were not priorly allocated, throws Segmenation fault and
+ * dumps core                                                     */
 int my_write(mem_t *w, size_t start_addy, char *string,
 			 int bytes, sfl_t *v, info_dump *id)
 {
@@ -438,7 +431,7 @@ int my_write(mem_t *w, size_t start_addy, char *string,
 				*((char *)(((info *)node->data)->data) + i) = string[i];
 			ok = 1;
 			((info *)node->data)->bytes = bytes;
-			// SE INTINDE PE MAI MULTE NODURI
+			// Write on more than one node
 		} else if (((info *)node->data)->addy == start_addy) {
 			dll_node_t *aux = node;
 			int bts = bytes;

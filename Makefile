@@ -7,9 +7,14 @@ TARGETS = sfl
 
 build: $(TARGETS)
 
-sfl: sfl.c
-	$(CC) $(CFLAGS) -o $@ $<
+sfl: sfl.o func.o
+	$(CC) $^ -o $@
 
+sfl.o: sfl.c
+	$(CC) $(CFLAGS) $^ -c
+
+$(func).o: $(func).c $(func).h
+	$(CC) $(CFLAGS) $^ -c
 
 # pack:
 # 	zip -FSr 313CC_RusanescuAndreiMarian_tema1.zip Makefile *.c *.in
@@ -17,5 +22,5 @@ run_sfl:
 	./sfl
 
 clean:
-	rm -f $(TARGETS)
+	rm -f $(TARGETS) *.o
 .PHONY: pack clean
